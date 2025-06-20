@@ -8,6 +8,17 @@ Rego policy targeting the Gatekeeper framework into a Kubewarden policy.
 Don't forget to checkout Kubewarden's [official documentation](https://docs.kubewarden.io)
 for more information about writing policies.
 
+## Requirements
+
+To fully use this template, you'll need the following tools:
+
+- [opa](https://github.com/open-policy-agent/opa/releases): tool
+  to build the code into wasm. The version expected is `v1.0.0` or later
+- [kwctl](https://github.com/kubewarden/kwctl/releases): tool you use to
+  prepare and run Kubewarden web assembly module
+- [bats](https://github.com/bats-core/bats-core): tool used to run end-to-end
+  tests. If you decided to write such kind of tests
+
 ## Introduction
 
 **Note well:** the existing Rego code should not need to be rewritten.
@@ -15,7 +26,7 @@ for more information about writing policies.
 These are the only requirements you have to fulfill:
 
 1. The policy evaluation must return a `violation` response object. This
-  is already a requirement for all the Gatekeeper policies.
+   is already a requirement for all the Gatekeeper policies.
 1. The policy must be compiled into a WebAssembly module using the `opa` cli tool.
 1. The policy must be annotated via `kwctl annotate`.
 
@@ -26,6 +37,51 @@ for your policies, plus all the automation needed to implement the 2nd and 3rd p
 
 The actual policy is defined inside of the `policy.rego` file. This file defines
 a `violation` object.
+
+## Rego Policy and OPA v1.0.0 Compatibility
+
+With the release of OPA (Open Policy Agent) `v1.0.0` in December 2024, a
+potentially breaking change was introduced to Rego policy syntax.
+
+Previously, using `if` for all rule definitions and `contains` for multi-value
+rules was optional; now, they're mandatory. This change affects most older
+policies.
+
+Here's a summary of what you need to know:
+
+- OPA `v1.0.0` Syntax: OPA `v1.0.0` requires the use of `if` for all rule definitions
+  and `contains` for multi-value rules. Policies that don't adhere to this syntax
+  will break.
+- Backward Compatibility: If you need to build older policies that don't use
+  the new `v1.0.0` syntax, you must provide the `--v0-compatible` flag to the
+  `opa build` command.
+- Gatekeeper Integration: Gatekeeper updated its OPA dependency to `v1.0.0` in
+  its `v3.19.0` release.
+- Rego Version in Gatekeeper Templates: Gatekeeper assumes `v0` syntax is used
+  unless the template explicitly specifies `version: "v1"` within the `source` field
+  under `code.engine: Rego`. For example, to explicitly use Rego v1 syntax in a
+  Gatekeeper template:
+
+```yaml
+targets:
+  - target: admission.k8s.gatekeeper.sh
+    code:
+      - engine: Rego
+        source:
+          version: "v1"
+          rego: |
+            # <Your Rego v1 policy code here>
+```
+
+What this means for you:
+
+- If your Rego policy template does NOT specify a `version` (or implies `v0`): You
+  must either call the `Makefile` target with the `OPA_V0_COMPATIBLE=true` variable
+  (e.g., `make OPA_V0_COMPATIBLE=true`) to ensure `opa` commands are called with the
+  `--v0-compatible` flag, or update your policy to the new `v1.0.0` syntax.
+- If your Rego policy template explicitly specifies `version: "v1"`: You must use
+  a recent version of OPA (v1.0.0 or later), and no special build flags are
+  required for the `opa build` command.
 
 ## Testing
 
@@ -59,14 +115,14 @@ workflows.
 
 They take care of the following automations:
 
-  * Execute the Rego test suite
-  * Build the Rego files into a single WebAssembly module
-  * Annotate the WebAssembly module with Kubewarden's metadata
-  * Execute end-to-end tests
-  * Push events on the `main` branch lead the:
-    * Push the annotated WebAssembly module to the GitHub Container Registry using the
-      `:latest` tag.
-  * The creation of git tags lead to:
-    * Creation of the GitHub Release, holding the annotated WebAssembly module
-    * Push the annotated WebAssembly module to the GitHub Container Registry using the
-      `:<git tag>` tag.
+- Execute the Rego test suite
+- Build the Rego files into a single WebAssembly module
+- Annotate the WebAssembly module with Kubewarden's metadata
+- Execute end-to-end tests
+- Push events on the `main` branch lead the:
+  - Push the annotated WebAssembly module to the GitHub Container Registry using the
+    `:latest` tag.
+- The creation of git tags lead to:
+  - Creation of the GitHub Release, holding the annotated WebAssembly module
+  - Push the annotated WebAssembly module to the GitHub Container Registry using the
+    `:<git tag>` tag.
